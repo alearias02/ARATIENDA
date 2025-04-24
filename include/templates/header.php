@@ -121,9 +121,11 @@ if (isset($_SESSION['usuario'])) {
                         </ul>
                     </div>
                 <?php else : ?>
-                    <a href="../userSrc/login.php" class="a-header-user">
-                        <p class="user-log">Iniciar sesión</p>
-                    </a>
+                <a href="../userSrc/login.php" class="a-header-user">
+                    <p class="user-log" style="background-color: black; color: white; padding: 6px 14px; border-radius: 6px; margin: 0;">
+                        Iniciar sesión
+                    </p>
+                </a>
                 <?php endif; ?>
             </div>
         </div>

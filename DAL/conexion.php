@@ -1,8 +1,8 @@
 <?php
 
 function conectar() {
-    $user = "FIDE_SAMDESIGN";
-    $password = "SAMDESIGN";
+    $user = "FIDE_ARATIENDA";
+    $password = "ARATIENDA";
 
     
     $os = PHP_OS_FAMILY;
@@ -10,7 +10,7 @@ function conectar() {
     if ($os === 'Windows') {
         $host = "localhost/XE";
     } else {
-        $host = "localhost:1521/ORCLPDB1"; 
+        $host = "localhost:1521/ORCLPDB1";  // CAMBIA ESTO de ORCLPDB1 a XE
     }
 
     $conexion = oci_connect($user, $password, $host);

@@ -1,4 +1,4 @@
-<?php 
+<?php
 require_once "../DAL/database.php";
 require_once "../include/templates/headerUser.php";
 require_once "../include/functions/recoge.php";
@@ -8,107 +8,168 @@ $mensajeErrorU = "";
 $mensajeErrorE = "";
 $mensajeError = "";
 
+$connection = conectar();
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    
-    // Capturar datos del formulario
-    $customer_id = recogePost('customer_id'); // Cedula del cliente
+    $customer_id = recogePost('customer_id');
     $user_name = recogePost('user_name');
     $password = recogePost('password');
     $confirm_password = recogePost('Cpassword');
-    $customer_name = recogePost('name');
-    $customer_lastname = recogePost('lastname');
-    $full_name = trim($customer_name . " " . $customer_lastname); // Concatenate name + last name
-    $customer_phone = recogePost('tel');
-    $user_email = recogePost('email');
+    $nombre_completo = recogePost('name');
+    $apellidos_completos = recogePost('lastname');
+    $telefono = recogePost('tel');
+    $email = recogePost('email');
+    $provincia = recogePost('provincia');
+    $canton = recogePost('canton');
+    $distrito = recogePost('distrito');
+    $descripcion = substr(recogePost('descripcion'), 0, 500); // Máximo 500 caracteres
+    $pais = 506;
 
-    // Verificar si las contraseñas coinciden
+    error_log("POST recibido: provincia=$provincia, canton=$canton, distrito=$distrito, descripcion=$descripcion");
+
     if ($password !== $confirm_password) {
         $mensajeError = "Las contraseñas no coinciden.";
     }
-
-    // Verificar si el usuario o correo existen
     if (usuarioExiste($user_name)) {
         $mensajeErrorU = "Este usuario ya existe.";
     }
-    if (correoExiste($user_email)) {
+    if (correoExiste($email)) {
         $mensajeErrorE = "Este correo ya está registrado.";
     }
 
-    // Si no hay errores, registrar el usuario
     if (empty($mensajeError) && empty($mensajeErrorU) && empty($mensajeErrorE)) {
-        $resultado = IngresarUsuarioCliente($customer_id, $full_name, $user_name, $user_email, $password,  $customer_phone);
+        // Obtener ID_DIRECCION
+        $sql_seq = "SELECT FIDE_SEQ_DIRECCION_ID.NEXTVAL AS NEXT_ID FROM DUAL";
+        $stmt_seq = oci_parse($connection, $sql_seq);
+        oci_execute($stmt_seq);
+        $row = oci_fetch_assoc($stmt_seq);
+        $id_direccion = $row['NEXT_ID'];
+        oci_free_statement($stmt_seq);
+        error_log("ID_DIRECCION generado desde secuencia: $id_direccion");
 
-        if ($resultado) {
-            header("Location: register-Addy.php?customer_id=" . urlencode($customer_id) . "&email=" . urlencode($user_email));
-            exit();
-        }       
-        
+        // Insertar dirección
+        $sql_dir = "INSERT INTO FIDE_DIRECCION_TB (
+            ID_DIRECCION, ID_PROVINCIA, ID_CANTON, ID_DISTRITO, ID_PAIS, DESCRIPCION
+        ) VALUES (
+            :id, :prov, :can, :dis, :pais, :descripcion_txt
+        )";
+        $stmt_dir = oci_parse($connection, $sql_dir);
+        oci_bind_by_name($stmt_dir, ':id', $id_direccion);
+        oci_bind_by_name($stmt_dir, ':prov', $provincia);
+        oci_bind_by_name($stmt_dir, ':can', $canton);
+        oci_bind_by_name($stmt_dir, ':dis', $distrito);
+        oci_bind_by_name($stmt_dir, ':pais', $pais);
+        oci_bind_by_name($stmt_dir, ':descripcion_txt', $descripcion);
+
+        if (!oci_execute($stmt_dir, OCI_NO_AUTO_COMMIT)) {
+            $e = oci_error($stmt_dir);
+            error_log("Fallo INSERT direccion: " . $e['message']);
+            oci_rollback($connection);
+        } else {
+            error_log("Resultado INSERT direccion: ok");
+
+            // Insertar usuario con nombre y apellidos completos
+            $resultado = IngresarUsuarioClienteConDireccion(
+                $customer_id,
+                $nombre_completo,
+                $apellidos_completos,
+                $user_name,
+                $email,
+                $password,
+                $telefono,
+                $id_direccion
+            );
+
+            if ($resultado) {
+                error_log("Resultado INSERT usuario: ok");
+                oci_commit($connection);
+                header("Location: login.php");
+                exit();
+            } else {
+                error_log("Resultado INSERT usuario: falló");
+                oci_rollback($connection);
+            }
+        }
     }
 }
-// Conectar a la base de datos
-$connection = conectar();
-
 ?>
 
 <!DOCTYPE html>
 <html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Registro</title>
+</head>
+
 <body>
     <main class="main-login">
         <form method="POST" id="form_Register">
             <div class="card-body">
-                <input type="hidden" name="action" value="">
                 <p class="p-register required-label">Elementos necesarios:</p>
 
-                <label for="customer_id" class="label-login required-label">Cédula de Identidad</label>
-                <div class="input-form-login">
-                    <input type="text" class="input-login" name="customer_id" id="customer_id" placeholder="Ingrese su cédula" required>
-                </div>
+                <label class="label-login required-label">Cédula de Identidad</label>
+                <input type="text" class="input-login" name="customer_id" id="customer_id" required>
 
-                <label for="name" class="label-login">Nombre</label>
-                <div class="input-form-login">
-                    <input type="text" class="input-login" name="name" id="name" placeholder="Ingrese su nombre">
-                </div>
+                <label class="label-login">Nombre</label>
+                <input type="text" class="input-login" name="name" id="name">
 
-                <label for="lastname" class="label-login">Apellidos</label>
-                <div class="input-form-login">
-                    <input type="text" class="input-login" name="lastname" id="lastname" placeholder="Ingrese sus apellidos">
-                </div>
+                <label class="label-login">Apellidos</label>
+                <input type="text" class="input-login" name="lastname" id="lastname">
 
-                <label for="user_name" class="label-login required-label">Usuario</label>
-                <div class="input-form-login">
-                    <input type="text" class="input-login" name="user_name" id="user_name" placeholder="Ingrese su usuario" required>
-                </div>
-                <p class="p-register"><?php echo $mensajeErrorU; ?></p> 
+                <label class="label-login required-label">Usuario</label>
+                <input type="text" class="input-login" name="user_name" id="user_name" required>
+                <p class="p-register"><?php echo $mensajeErrorU; ?></p>
 
-                <label for="email" class="label-login required-label">Correo</label>
-                <div class="input-form-login">
-                    <input type="email" class="input-login" name="email" id="email" placeholder="Ingrese su correo" required>
-                </div>
-                <p class="p-register"><?php echo $mensajeErrorE; ?></p> 
+                <label class="label-login required-label">Correo</label>
+                <input type="email" class="input-login" name="email" id="email" required>
+                <p class="p-register"><?php echo $mensajeErrorE; ?></p>
 
-                <label for="tel" class="label-login required-label">Teléfono</label>
-                <div class="input-form-login">
-                    <input type="tel" class="input-login" name="tel" id="tel" placeholder="Ingrese su teléfono" required>
-                </div>
-                
-                <label for="password" class="label-login required-label">Contraseña</label>
-                <div class="input-form-login">
-                    <input type="password" class="input-login" name="password" id="password" placeholder="Ingrese su contraseña" required>
-                </div>
+                <label class="label-login required-label">Teléfono</label>
+                <input type="tel" class="input-login" name="tel" id="tel" required>
 
-                <label for="Cpassword" class="label-login required-label">Confirmar Contraseña</label>
-                <div class="input-form-login">
-                    <input type="password" class="input-login" name="Cpassword" id="Cpassword" placeholder="Confirme su contraseña" required>
-                </div>
+                <label class="label-login required-label">Contraseña</label>
+                <input type="password" class="input-login" name="password" id="password" required>
 
+                <label class="label-login required-label">Confirmar Contraseña</label>
+                <input type="password" class="input-login" name="Cpassword" id="Cpassword" required>
                 <p class="p-register" style="color: red;"><?php echo $mensajeError; ?></p>
 
-                <a href="register-Addy.php" ><button type="submit" class="button-submit">Registrarse</button></a>
-                <p class="p">¿Posees una cuenta? <span class="span"><a href="login.php">Inicia sesión</a></span></p>
+                <label class="label-login required-label">Provincia</label>
+                <select name="provincia" id="provincia" required>
+                    <option value="">Seleccione una provincia</option>
+                    <?php
+                    $query = "SELECT ID_PROVINCIA, NOMBRE_PROVINCIA FROM FIDE_PROVINCIA_TB ORDER BY NOMBRE_PROVINCIA";
+                    $stid = oci_parse($connection, $query);
+                    oci_execute($stid);
+                    while ($row = oci_fetch_assoc($stid)) {
+                        echo "<option value='" . $row['ID_PROVINCIA'] . "'>" . $row['NOMBRE_PROVINCIA'] . "</option>";
+                    }
+                    oci_free_statement($stid);
+                    ?>
+                </select>
+
+                <label class="label-login required-label">Cantón</label>
+                <select name="canton" id="canton" required>
+                    <option value="">Seleccione un cantón</option>
+                </select>
+
+                <label class="label-login required-label">Distrito</label>
+                <select name="distrito" id="distrito" required>
+                    <option value="">Seleccione un distrito</option>
+                </select>
+
+                <label class="label-login">Descripción de la dirección</label>
+                <textarea class="input-login" name="descripcion" id="descripcion"
+                    placeholder="Ej: Casa amarilla frente a la soda 'El Tico'..."></textarea>
+
+                <button type="submit" class="button-submit">Registrarse</button>
+                <p class="p">¿Posees una cuenta? <a href="login.php">Inicia sesión</a></p>
             </div>
         </form>
-        
     </main>
-</body>
-</html>
 
+    <script src="../js/ubicaciones.js"></script>
+</body>
+
+</html>
